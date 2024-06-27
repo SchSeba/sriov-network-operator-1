@@ -75,6 +75,7 @@ func (n *network) TryToGetVirtualInterfaceName(pciAddr string) string {
 func (n *network) TryGetInterfaceName(pciAddr string) string {
 	names, err := n.dputilsLib.GetNetNames(pciAddr)
 	if err != nil || len(names) < 1 {
+		log.Log.Error(err, "TryGetInterfaceName(): failed to get interface name")
 		return ""
 	}
 	netDevName := names[0]
@@ -95,8 +96,37 @@ func (n *network) TryGetInterfaceName(pciAddr string) string {
 		return name
 	}
 
-	log.Log.V(2).Info("tryGetInterfaceName()", "name", netDevName)
+	log.Log.V(2).Info("TryGetInterfaceName()", "name", netDevName)
 	return netDevName
+}
+
+// TryGetInterfaceName tries to find the SR-IOV virtual interface index base on pci address
+func (n *network) TryGetInterfaceIndex(pciAddr string) int {
+	ifName := n.TryToGetVirtualInterfaceName(pciAddr)
+	if ifName == "" {
+		return -1
+	}
+
+	netDir := filepath.Join(consts.SysBusPciDevices, pciAddr, "net", ifName)
+	if _, err := os.Lstat(netDir); err != nil {
+		log.Log.Error(err, "TryGetInterfaceIndex(): no interface name directory under pci device", "pciAddr", pciAddr)
+		return -1
+	}
+
+	// read the ifindex file from the interface folder
+	indexFile := filepath.Join(netDir, "ifindex")
+	ifIndex, err := os.ReadFile(indexFile)
+	if err != nil {
+		log.Log.Error(err, "TryGetInterfaceIndex(): failed to read ifindex file", "indexFile", indexFile)
+		return -1
+	}
+
+	intIfIndex, err := strconv.Atoi(strings.TrimSpace(string(ifIndex)))
+	if err != nil {
+		log.Log.Error(err, "TryGetInterfaceIndex(): failed to parse ifindex file content", "ifIndex", string(ifIndex))
+		return -1
+	}
+	return intIfIndex
 }
 
 func (n *network) GetPhysSwitchID(name string) (string, error) {
