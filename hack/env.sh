@@ -1,19 +1,48 @@
 #!/bin/bash
 
+_url_detect() {
+    local varname="$1"
+    local url="$2"
+    local digest
+    local value=
+
+    if [ "$EMPTY_IS_VALID" = 1 ] ; then
+        [ -n "${!varname+set}" ] && return 0
+    else
+        [ -n "${!varname}" ] && return 0
+    fi
+
+    if [ -n "$url" ] ; then
+        digest="$(skopeo inspect "docker://$url" | jq --raw-output '.Digest')" || :
+        if [ -z "$digest" ] ; then
+            echo "Failure to detect \$$varname at $url. Set the variable"
+            return 1
+        fi
+        value="$url@$digest"
+    fi
+
+    export "$varname=$value"
+}
+
 if [ -z $SKIP_VAR_SET ]; then
-        export SRIOV_CNI_IMAGE=${SRIOV_CNI_IMAGE:-ghcr.io/k8snetworkplumbingwg/sriov-cni}
-        export SRIOV_INFINIBAND_CNI_IMAGE=${SRIOV_INFINIBAND_CNI_IMAGE:-ghcr.io/k8snetworkplumbingwg/ib-sriov-cni}
-        # OVS_CNI_IMAGE can be explicitly set to empty value, use default only if the var is not set
-        export OVS_CNI_IMAGE=${OVS_CNI_IMAGE-ghcr.io/k8snetworkplumbingwg/ovs-cni-plugin}
-        # RDMA_CNI_IMAGE can be explicitly set to empty value, use default only if the var is not set
-        export RDMA_CNI_IMAGE=${RDMA_CNI_IMAGE-ghcr.io/k8snetworkplumbingwg/rdma-cni}
-        export SRIOV_DEVICE_PLUGIN_IMAGE=${SRIOV_DEVICE_PLUGIN_IMAGE:-ghcr.io/k8snetworkplumbingwg/sriov-network-device-plugin}
-        export NETWORK_RESOURCES_INJECTOR_IMAGE=${NETWORK_RESOURCES_INJECTOR_IMAGE:-ghcr.io/k8snetworkplumbingwg/network-resources-injector}
-        export SRIOV_NETWORK_CONFIG_DAEMON_IMAGE=${SRIOV_NETWORK_CONFIG_DAEMON_IMAGE:-ghcr.io/k8snetworkplumbingwg/sriov-network-operator-config-daemon}
-        export SRIOV_NETWORK_WEBHOOK_IMAGE=${SRIOV_NETWORK_WEBHOOK_IMAGE:-ghcr.io/k8snetworkplumbingwg/sriov-network-operator-webhook}
-        export METRICS_EXPORTER_IMAGE=${METRICS_EXPORTER_IMAGE:-ghcr.io/k8snetworkplumbingwg/sriov-network-metrics-exporter}
-        export SRIOV_NETWORK_OPERATOR_IMAGE=${SRIOV_NETWORK_OPERATOR_IMAGE:-ghcr.io/k8snetworkplumbingwg/sriov-network-operator}
-        export METRICS_EXPORTER_KUBE_RBAC_PROXY_IMAGE=${METRICS_EXPORTER_KUBE_RBAC_PROXY_IMAGE:-gcr.io/kubebuilder/kube-rbac-proxy:v0.15.0}
+        if ! skopeo -v &> /dev/null
+        then
+                echo "skopeo could not be found"
+                exit 1
+        fi
+
+        _url_detect "SRIOV_CNI_IMAGE" "quay.io/openshift/origin-sriov-cni"
+        _url_detect "SRIOV_INFINIBAND_CNI_IMAGE" "quay.io/openshift/origin-sriov-infiniband-cni"
+        EMPTY_IS_VALID=1 _url_detect "OVS_CNI_IMAGE" "quay.io/kubevirt/ovs-cni-plugin"
+        EMPTY_IS_VALID=1 _url_detect "RDMA_CNI_IMAGE" "quay.io/openshift/origin-rdma-cni"
+        _url_detect "SRIOV_DEVICE_PLUGIN_IMAGE" "quay.io/openshift/origin-sriov-network-device-plugin"
+        _url_detect "NETWORK_RESOURCES_INJECTOR_IMAGE" "quay.io/openshift/origin-sriov-dp-admission-controller"
+        _url_detect "SRIOV_NETWORK_CONFIG_DAEMON_IMAGE" "quay.io/openshift/origin-sriov-network-config-daemon"
+        _url_detect "SRIOV_NETWORK_WEBHOOK_IMAGE" "quay.io/openshift/origin-sriov-network-webhook"
+        _url_detect "METRICS_EXPORTER_IMAGE" "quay.io/openshift/origin-sriov-network-metrics-exporter"
+        _url_detect "SRIOV_NETWORK_OPERATOR_IMAGE" "quay.io/openshift/origin-sriov-network-operator"
+        EMPTY_IS_VALID=1 _url_detect "METRICS_EXPORTER_KUBE_RBAC_PROXY_IMAGE" "quay.io/openshift/origin-kube-rbac-proxy"
+
         fail_msg_detect="is empty and failed to detect"
 else
         fail_msg_detect="is empty but SKIP_VAR_SET is set"
