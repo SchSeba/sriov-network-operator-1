@@ -131,6 +131,13 @@ spec:
       - name: sriov-network-config-daemon
         image: {{.Image}}
         command:
+#          - dlv
+#          - --listen=:2345
+#          - --headless=true
+#          - --api-version=2
+#          - --accept-multiclient
+#          - --log
+#          - exec
           - sriov-network-config-daemon
         securityContext:
           privileged: true

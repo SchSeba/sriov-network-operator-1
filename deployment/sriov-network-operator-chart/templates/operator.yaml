@@ -41,8 +41,17 @@ spec:
       containers:
         - name: {{ include "sriov-network-operator.fullname" . }}
           image: {{ .Values.images.operator }}
+{{/*          command:*/}}
+{{/*            - sriov-network-operator*/}}
           command:
-            - sriov-network-operator
+{{/*            - dlv*/}}
+{{/*            - --listen=:2345*/}}
+{{/*            - --headless=true*/}}
+{{/*            - --api-version=2*/}}
+{{/*            - --accept-multiclient*/}}
+{{/*            - --log*/}}
+{{/*            - exec*/}}
+            - /usr/bin/sriov-network-operator
           resources:
             requests:
               cpu: 100m
