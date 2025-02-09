@@ -7,6 +7,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/kubectl/pkg/drain"
@@ -85,12 +86,38 @@ func (d *Drainer) DrainNode(ctx context.Context, node *corev1.Node, fullNodeDrai
 			return false, nil
 		}
 		err = drain.RunNodeDrain(drainHelper, node.Name)
-		if err == nil {
+		if err != nil {
+			lastErr = err
+			reqLogger.Info("drainNode(): Draining failed, retrying", "error", err)
+			return false, nil
+		}
+
+		// on full drain there is no need to try and remove pods that are owned by DaemonSets
+		// as we are going to reboot the node in any case.
+		if fullNodeDrain {
 			return true, nil
 		}
-		lastErr = err
-		reqLogger.Info("drainNode(): Draining failed, retrying", "error", err)
-		return false, nil
+
+		// Go over all the remain pods search for DaemonSets that have SR-IOV devices and remove them
+		// we can't use the drain from core kubernetes as it doesn't support removing pods that are part of a DaemonSets
+		podList, err := d.kubeClient.CoreV1().Pods("").List(ctx, metav1.ListOptions{FieldSelector: fmt.Sprintf("spec.nodeName=%s", node.Name)})
+		if err != nil {
+			lastErr = err
+			reqLogger.Info("drainNode(): Failed to list pods, retrying", "error", err)
+			return false, nil
+		}
+
+		// remove pods that are owned by a DaemonSet and use SR-IOV devices
+		dsPodsList := getDsPodsToRemove(podList)
+		for _, pod := range dsPodsList {
+			err = d.kubeClient.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+			if err != nil {
+				lastErr = err
+				reqLogger.Info("drainNode(): Failed to delete pod, retrying", "error", err)
+				return false, nil
+			}
+		}
+		return true, nil
 	}); err != nil {
 		if wait.Interrupted(err) {
 			reqLogger.Info("drainNode(): failed to drain node", "steps", backoff.Steps, "error", lastErr)
@@ -158,17 +185,11 @@ func createDrainHelper(kubeClient kubernetes.Interface, ctx context.Context, ful
 	// when we just want to drain and not reboot we can only remove the pods using sriov devices
 	if !fullDrain {
 		deleteFunction := func(p corev1.Pod) drain.PodDeleteStatus {
-			for _, c := range p.Spec.Containers {
-				if c.Resources.Requests != nil {
-					for r := range c.Resources.Requests {
-						if strings.HasPrefix(r.String(), vars.ResourcePrefix) {
-							return drain.PodDeleteStatus{
-								Delete:  true,
-								Reason:  "pod contain SR-IOV device",
-								Message: "SR-IOV network operator draining the node",
-							}
-						}
-					}
+			if podHasSRIOVDevice(&p) {
+				return drain.PodDeleteStatus{
+					Delete:  true,
+					Reason:  "pod contains SR-IOV device",
+					Message: "SR-IOV network operator draining the node",
 				}
 			}
 			return drain.PodDeleteStatus{Delete: false}
@@ -178,4 +199,39 @@ func createDrainHelper(kubeClient kubernetes.Interface, ctx context.Context, ful
 	}
 
 	return drainer
+}
+
+func podHasSRIOVDevice(p *corev1.Pod) bool {
+	for _, c := range p.Spec.Containers {
+		if c.Resources.Requests != nil {
+			for r := range c.Resources.Requests {
+				if strings.HasPrefix(r.String(), vars.ResourcePrefix) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+func podsHasDSOwner(p *corev1.Pod) bool {
+	for _, o := range p.OwnerReferences {
+		if o.Kind == "DaemonSet" {
+			return true
+		}
+	}
+
+	return false
+}
+
+func getDsPodsToRemove(pl *corev1.PodList) []corev1.Pod {
+	podsToRemove := []corev1.Pod{}
+	for _, pod := range pl.Items {
+		if podsHasDSOwner(&pod) && podHasSRIOVDevice(&pod) {
+			podsToRemove = append(podsToRemove, pod)
+		}
+	}
+
+	return podsToRemove
 }
