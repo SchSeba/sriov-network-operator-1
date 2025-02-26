@@ -194,7 +194,7 @@ func (s *ServiceConfig) phasePre() error {
 
 func (s *ServiceConfig) phasePost() error {
 	s.V(0).Info("check result of the Pre phase")
-	prePhaseResult, _, err := s.ReadSriovResult()
+	prePhaseResult, err := s.ReadSriovResult()
 	if err != nil {
 		return fmt.Errorf("failed to read result of the pre phase: %v", err)
 	}

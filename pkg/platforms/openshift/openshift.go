@@ -137,7 +137,8 @@ func (c *openshiftContext) OpenshiftBeforeDrainNode(ctx context.Context, node *c
 		if !mcp.Spec.Paused {
 			// if the machine config pool needs to update then we return false
 			// if they are equal we can pause the pool
-			if mcp.Spec.Configuration.Name != mcp.Status.Configuration.Name {
+			if mcp.Spec.Configuration.Name == "" || mcp.Status.Configuration.Name == "" ||
+				mcp.Spec.Configuration.Name != mcp.Status.Configuration.Name {
 				return false, err
 			} else {
 				err = c.ChangeMachineConfigPoolPause(ctx, mcp, true)
@@ -285,17 +286,27 @@ func (c *openshiftContext) OpenshiftAfterCompleteDrainNode(ctx context.Context, 
 }
 
 func (c *openshiftContext) GetNodeMachinePoolName(ctx context.Context, node *corev1.Node) (string, error) {
+	// if it's not an openshift cluster we return error
+	if !c.IsOpenshiftCluster() {
+		return "", fmt.Errorf("not an openshift cluster")
+	}
+
+	// hyperShift cluster don't have machine config
+	if c.IsHypershift() {
+		return "", fmt.Errorf("hypershift doesn't have machineConfig")
+	}
+
 	desiredConfig, ok := node.Annotations[mcoconsts.DesiredMachineConfigAnnotationKey]
 	if !ok {
 		log.Log.Error(nil, "getNodeMachinePool(): Failed to find the the desiredConfig Annotation")
-		return "", fmt.Errorf("getNodeMachinePool(): Failed to find the the desiredConfig Annotation")
+		return "", fmt.Errorf("failed to find the the desiredConfig Annotation")
 	}
 
 	mc := &mcv1.MachineConfig{}
 	err := c.kubeClient.Get(ctx, client.ObjectKey{Name: desiredConfig}, mc)
 	if err != nil {
 		log.Log.Error(err, "getNodeMachinePool(): Failed to get the desired Machine Config")
-		return "", err
+		return "", fmt.Errorf("failed to get the desired Machine Config: %v", err)
 	}
 	for _, owner := range mc.OwnerReferences {
 		if owner.Kind == "MachineConfigPool" {
@@ -304,7 +315,7 @@ func (c *openshiftContext) GetNodeMachinePoolName(ctx context.Context, node *cor
 	}
 
 	log.Log.Error(nil, "getNodeMachinePool(): Failed to find the MCP of the node")
-	return "", fmt.Errorf("getNodeMachinePool(): Failed to find the MCP of the node")
+	return "", fmt.Errorf("failed to find the MCP of the node")
 }
 
 func (c *openshiftContext) ChangeMachineConfigPoolPause(ctx context.Context, mcp *mcv1.MachineConfigPool, pause bool) error {

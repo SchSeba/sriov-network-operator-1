@@ -36,20 +36,6 @@ func getNodeRole(node corev1.Node) string {
 	return ""
 }
 
-func IsSingleNodeCluster(c client.Client) (bool, error) {
-	if os.Getenv("CLUSTER_TYPE") == consts.ClusterTypeOpenshift {
-		topo, err := openshiftControlPlaneTopologyStatus(c)
-		if err != nil {
-			return false, err
-		}
-		if topo == configv1.SingleReplicaTopologyMode {
-			return true, nil
-		}
-		return false, nil
-	}
-	return k8sSingleNodeClusterStatus(c)
-}
-
 // IsExternalControlPlaneCluster detects control plane location of the cluster.
 // On OpenShift, the control plane topology is configured in configv1.Infrastucture struct.
 // On kubernetes, it is determined by which node the sriov operator is scheduled on. If operator
@@ -71,21 +57,6 @@ func IsExternalControlPlaneCluster(c client.Client) (bool, error) {
 		if role == workerRoleName {
 			return true, nil
 		}
-	}
-	return false, nil
-}
-
-func k8sSingleNodeClusterStatus(c client.Client) (bool, error) {
-	nodeList := &corev1.NodeList{}
-	err := c.List(context.TODO(), nodeList)
-	if err != nil {
-		log.Log.Error(err, "k8sSingleNodeClusterStatus(): Failed to list nodes")
-		return false, err
-	}
-
-	if len(nodeList.Items) == 1 {
-		log.Log.Info("k8sSingleNodeClusterStatus(): one node found in the cluster")
-		return true, nil
 	}
 	return false, nil
 }
