@@ -90,7 +90,7 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 
 		snolog.SetLogLevel(2)
 		// Check if the environment variable CLUSTER_TYPE is set
-		if clusterType, ok := os.LookupEnv("CLUSTER_TYPE"); ok && clusterType == "openshift" {
+		if clusterType, ok := os.LookupEnv("CLUSTER_TYPE"); ok && clusterType == constants.ClusterTypeOpenshift {
 			vars.ClusterType = constants.ClusterTypeOpenshift
 		} else {
 			vars.ClusterType = constants.ClusterTypeKubernetes
@@ -98,12 +98,14 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 	})
 
 	BeforeEach(func() {
+		t = GinkgoT()
 		mockCtrl = gomock.NewController(t)
 		hostHelper = mock_helper.NewMockHostHelpersInterface(mockCtrl)
 		platformHelper = mock_platforms.NewMockInterface(mockCtrl)
 
 		// daemon initialization default mocks
 		hostHelper.EXPECT().CheckRDMAEnabled().Return(true, nil)
+		hostHelper.EXPECT().CleanSriovFilesFromHost(vars.ClusterType == constants.ClusterTypeOpenshift).Return(nil)
 		hostHelper.EXPECT().TryEnableTun()
 		hostHelper.EXPECT().TryEnableVhostNet()
 		hostHelper.EXPECT().PrepareNMUdevRule([]string{}).Return(nil)

@@ -146,6 +146,16 @@ const (
 	KernelArgRdmaShared       = "ib_core.netns_mode=1"
 	KernelArgRdmaExclusive    = "ib_core.netns_mode=0"
 
+	// Systemd consts
+	SriovSystemdConfigPath        = SriovConfBasePath + "/sriov-interface-config.yaml"
+	SriovSystemdResultPath        = SriovConfBasePath + "/sriov-interface-result.yaml"
+	SriovSystemdSupportedNicPath  = SriovConfBasePath + "/sriov-supported-nics-ids.yaml"
+	SriovSystemdServiceBinaryPath = "/var/lib/sriov/sriov-network-config-daemon"
+
+	SriovServiceBasePath        = "/etc/systemd/system"
+	SriovServicePath            = SriovServiceBasePath + "/sriov-config.service"
+	SriovPostNetworkServicePath = SriovServiceBasePath + "sriov-config-post-network.service"
+
 	// Feature gates
 	// ParallelNicConfigFeatureGate: allow to configure nics in parallel
 	ParallelNicConfigFeatureGate = "parallelNicConfig"
