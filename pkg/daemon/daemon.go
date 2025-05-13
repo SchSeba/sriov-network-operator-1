@@ -34,7 +34,7 @@ type NodeReconciler struct {
 
 	HostHelpers helper.HostHelpersInterface
 
-	platformHelpers platforms.Interface
+	platformHelpers *platforms.PlatformHelper
 
 	eventRecorder *EventRecorder
 
@@ -51,7 +51,7 @@ type NodeReconciler struct {
 func New(
 	client client.Client,
 	hostHelpers helper.HostHelpersInterface,
-	platformHelper platforms.Interface,
+	platformHelper *platforms.PlatformHelper,
 	er *EventRecorder,
 	featureGates featuregate.FeatureGate,
 	disabledPlugins []string,
@@ -105,12 +105,12 @@ func (dn *NodeReconciler) Init() error {
 		}
 
 		if ns == nil {
-			err = dn.platformHelpers.CreateOpenstackDevicesInfo()
+			err = dn.platformHelpers.Hypervisor.CreateOpenstackDevicesInfo()
 			if err != nil {
 				return err
 			}
 		} else {
-			dn.platformHelpers.CreateOpenstackDevicesInfoFromNodeStatus(ns)
+			dn.platformHelpers.Hypervisor.CreateOpenstackDevicesInfoFromNodeStatus(ns)
 		}
 	}
 

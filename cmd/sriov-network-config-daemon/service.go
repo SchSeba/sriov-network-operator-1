@@ -251,7 +251,7 @@ func (s *ServiceConfig) getPlugin(phase string) (plugin.VendorPlugin, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create generic plugin for %v", err)
 		}
-	case consts.VirtualOpenStack:
+	case consts.VirtualOpenStack, consts.VirtualAWS:
 		switch phase {
 		case PhasePre:
 			configPlugin, err = newVirtualPluginFunc(s.hostHelper)
@@ -279,22 +279,22 @@ func (s *ServiceConfig) getNetworkNodeState(phase string) (*sriovv1.SriovNetwork
 			return nil, fmt.Errorf("failed to discover sriov devices on the host:  %v", err)
 		}
 		if phase != PhasePre && vars.ManageSoftwareBridges {
-			// openvswitch is not available during the pre phase
+			// openvswitch is not available during the pre-phase
 			bridges, err = s.hostHelper.DiscoverBridges()
 			if err != nil {
 				return nil, fmt.Errorf("failed to discover managed bridges on the host:  %v", err)
 			}
 		}
-	case consts.VirtualOpenStack:
+	case consts.VirtualOpenStack, consts.VirtualAWS:
 		platformHelper, err := newPlatformHelperFunc()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create platformHelpers")
 		}
-		err = platformHelper.CreateOpenstackDevicesInfo()
+		err = platformHelper.Hypervisor.CreateOpenstackDevicesInfo()
 		if err != nil {
 			return nil, fmt.Errorf("failed to read OpenStack data: %v", err)
 		}
-		ifaceStatuses, err = platformHelper.DiscoverSriovDevicesVirtual()
+		ifaceStatuses, err = platformHelper.Hypervisor.DiscoverSriovDevicesVirtual()
 		if err != nil {
 			return nil, fmt.Errorf("failed to discover devices: %v", err)
 		}

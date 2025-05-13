@@ -4,37 +4,30 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/host"
-	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/openshift"
-	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/openstack"
-	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/utils"
+	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/hypervisor/openstack"
+	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/orchestrator"
 )
 
-//go:generate ../../bin/mockgen -destination mock/mock_platforms.go -source platforms.go
-type Interface interface {
-	openshift.OpenshiftContextInterface
-	openstack.OpenstackInterface
+type PlatformHelper struct {
+	Orchestrator orchestrator.OrchestrationInterface
+	Hypervisor   openstack.OpenstackInterface
 }
 
-type platformHelper struct {
-	openshift.OpenshiftContextInterface
-	openstack.OpenstackInterface
-}
-
-func NewDefaultPlatformHelper() (Interface, error) {
-	openshiftContext, err := openshift.New()
+func NewDefaultPlatformHelper() (*PlatformHelper, error) {
+	orch, err := orchestrator.New()
 	if err != nil {
 		return nil, err
 	}
-	utilsHelper := utils.New()
-	hostManager, err := host.NewHostManager(utilsHelper)
+
+	hostManager, err := host.NewDefaultHostManager()
 	if err != nil {
 		log.Log.Error(err, "failed to create host manager")
 		return nil, err
 	}
 	openstackContext := openstack.New(hostManager)
 
-	return &platformHelper{
-		openshiftContext,
+	return &PlatformHelper{
+		orch,
 		openstackContext,
 	}, nil
 }

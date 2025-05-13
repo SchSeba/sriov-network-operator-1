@@ -27,7 +27,7 @@ import (
 type SriovNetworkPoolConfigReconciler struct {
 	client.Client
 	Scheme         *runtime.Scheme
-	PlatformHelper platforms.Interface
+	PlatformHelper *platforms.PlatformHelper
 }
 
 const (
@@ -49,13 +49,14 @@ const (
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.6.4/pkg/reconcile
 func (r *SriovNetworkPoolConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("sriovnetworkpoolconfig", req.NamespacedName)
+
 	isHypershift := false
-	if r.PlatformHelper.IsOpenshiftCluster() {
-		if r.PlatformHelper.IsHypershift() {
-			isHypershift = true
-		}
+	if r.PlatformHelper.Orchestrator.ClusterType() == constants.ClusterTypeOpenshift &&
+		r.PlatformHelper.Orchestrator.Flavor() == constants.ClusterFlavorHypershift {
+		isHypershift = true
 		logger = logger.WithValues("isHypershift", isHypershift)
 	}
+
 	logger.Info("Reconciling")
 
 	// Fetch SriovNetworkPoolConfig

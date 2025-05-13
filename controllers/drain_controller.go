@@ -54,7 +54,7 @@ type DrainReconcile struct {
 	drainCheckMutex sync.Mutex
 }
 
-func NewDrainReconcileController(client client.Client, Scheme *runtime.Scheme, recorder record.EventRecorder, platformHelper platforms.Interface) (*DrainReconcile, error) {
+func NewDrainReconcileController(client client.Client, Scheme *runtime.Scheme, recorder record.EventRecorder, platformHelper *platforms.PlatformHelper) (*DrainReconcile, error) {
 	drainer, err := drain.NewDrainer(platformHelper)
 	if err != nil {
 		return nil, err

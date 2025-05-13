@@ -21,8 +21,8 @@ import (
 
 	sriovnetworkv1 "github.com/k8snetworkplumbingwg/sriov-network-operator/api/v1"
 	constants "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/consts"
-	mock_platforms "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/mock"
-	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/openshift"
+	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms"
+	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/orchestrator/mock"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/utils"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vars"
 )
@@ -39,12 +39,11 @@ var _ = Describe("Drain Controller", Ordered, func() {
 
 		t := GinkgoT()
 		mockCtrl := gomock.NewController(t)
-		platformHelper := mock_platforms.NewMockInterface(mockCtrl)
-		platformHelper.EXPECT().GetFlavor().Return(openshift.OpenshiftFlavorDefault).AnyTimes()
-		platformHelper.EXPECT().IsOpenshiftCluster().Return(false).AnyTimes()
-		platformHelper.EXPECT().IsHypershift().Return(false).AnyTimes()
-		platformHelper.EXPECT().OpenshiftBeforeDrainNode(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
-		platformHelper.EXPECT().OpenshiftAfterCompleteDrainNode(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+		orchestrator := orchestratorMock.NewMockOrchestrationInterface(mockCtrl)
+		platformHelper := &platforms.PlatformHelper{Orchestrator: orchestrator, Hypervisor: nil}
+
+		orchestrator.EXPECT().BeforeDrainNode(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+		orchestrator.EXPECT().AfterCompleteDrainNode(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 
 		// we need a client that doesn't use the local cache for the objects
 		drainKClient, err := client.New(cfg, client.Options{
