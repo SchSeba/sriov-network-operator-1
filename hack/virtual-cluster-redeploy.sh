@@ -87,6 +87,10 @@ if [ $CLUSTER_TYPE == "openshift" ]; then
   export SRIOV_NETWORK_OPERATOR_IMAGE="image-registry.openshift-image-registry.svc:5000/$NAMESPACE/sriov-network-operator:latest"
   export SRIOV_NETWORK_CONFIG_DAEMON_IMAGE="image-registry.openshift-image-registry.svc:5000/$NAMESPACE/sriov-network-config-daemon:latest"
   export SRIOV_NETWORK_WEBHOOK_IMAGE="image-registry.openshift-image-registry.svc:5000/$NAMESPACE/sriov-network-operator-webhook:latest"
+
+  echo "## apply CRDs"
+  kubectl apply -k $root/config/crd
+
   echo "## deploying SRIOV Network Operator"
   hack/deploy-setup.sh $NAMESPACE
 else
