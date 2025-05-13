@@ -42,7 +42,7 @@ var (
 	ospMetaDataFile    = ospMetaDataDir + "/" + ospMetaDataJSON
 )
 
-//go:generate ../../../bin/mockgen -destination mock/mock_openstack.go -source openstack.go
+//go:generate ../../../../bin/mockgen -destination mock/mock_openstack.go -source openstack.go
 type OpenstackInterface interface {
 	CreateOpenstackDevicesInfo() error
 	CreateOpenstackDevicesInfoFromNodeStatus(*sriovnetworkv1.SriovNetworkNodeState)

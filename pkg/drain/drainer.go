@@ -39,10 +39,10 @@ type DrainInterface interface {
 
 type Drainer struct {
 	kubeClient      kubernetes.Interface
-	platformHelpers platforms.Interface
+	platformHelpers *platforms.PlatformHelper
 }
 
-func NewDrainer(platformHelpers platforms.Interface) (DrainInterface, error) {
+func NewDrainer(platformHelpers *platforms.PlatformHelper) (DrainInterface, error) {
 	kclient, err := kubernetes.NewForConfig(vars.Config)
 	if err != nil {
 		return nil, err
@@ -61,9 +61,9 @@ func (d *Drainer) DrainNode(ctx context.Context, node *corev1.Node, fullNodeDrai
 	reqLogger := ctx.Value("logger").(logr.Logger).WithName("drainNode")
 	reqLogger.Info("Node drain requested")
 
-	completed, err := d.platformHelpers.OpenshiftBeforeDrainNode(ctx, node)
+	completed, err := d.platformHelpers.Orchestrator.BeforeDrainNode(ctx, node)
 	if err != nil {
-		reqLogger.Error(err, "error running OpenshiftDrainNode")
+		reqLogger.Error(err, fmt.Sprintf("failed to run BeforeDrainNode for orchestrator %s", d.platformHelpers.Orchestrator.ClusterType()))
 		return false, err
 	}
 
@@ -131,9 +131,9 @@ func (d *Drainer) CompleteDrainNode(ctx context.Context, node *corev1.Node) (boo
 
 	// call the openshift complete drain to unpause the MCP
 	// only if we are the last draining node in the pool
-	completed, err := d.platformHelpers.OpenshiftAfterCompleteDrainNode(ctx, node)
+	completed, err := d.platformHelpers.Orchestrator.AfterCompleteDrainNode(ctx, node)
 	if err != nil {
-		logger.Error(err, "failed to complete openshift draining")
+		logger.Error(err, fmt.Sprintf("failed to run AfterCompleteDrainNode for orchestrator %s", d.platformHelpers.Orchestrator.ClusterType()))
 		return false, err
 	}
 

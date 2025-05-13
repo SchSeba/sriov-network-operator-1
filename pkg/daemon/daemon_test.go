@@ -27,7 +27,9 @@ import (
 	hostTypes "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/host/types"
 	snolog "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/log"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms"
-	mock_platforms "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/mock"
+	openstackMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/hypervisor/openstack/mock"
+	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/orchestrator/mock"
+
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vars"
 )
 
@@ -43,7 +45,9 @@ var (
 	t              FullGinkgoTInterface
 	mockCtrl       *gomock.Controller
 	hostHelper     *mock_helper.MockHostHelpersInterface
-	platformHelper *mock_platforms.MockInterface
+	orchestrator   *orchestratorMock.MockOrchestrationInterface
+	openstack      *openstackMock.MockOpenstackInterface
+	platformHelper *platforms.PlatformHelper
 )
 
 const (
@@ -87,7 +91,7 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 
 		snolog.SetLogLevel(2)
 		// Check if the environment variable CLUSTER_TYPE is set
-		if clusterType, ok := os.LookupEnv("CLUSTER_TYPE"); ok && clusterType == constants.ClusterTypeOpenshift {
+		if clusterType, ok := os.LookupEnv("CLUSTER_TYPE"); ok && constants.ClusterType(clusterType) == constants.ClusterTypeOpenshift {
 			vars.ClusterType = constants.ClusterTypeOpenshift
 		} else {
 			vars.ClusterType = constants.ClusterTypeKubernetes
@@ -98,7 +102,9 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 		t = GinkgoT()
 		mockCtrl = gomock.NewController(t)
 		hostHelper = mock_helper.NewMockHostHelpersInterface(mockCtrl)
-		platformHelper = mock_platforms.NewMockInterface(mockCtrl)
+		orchestrator = orchestratorMock.NewMockOrchestrationInterface(mockCtrl)
+		openstack = openstackMock.NewMockOpenstackInterface(mockCtrl)
+		platformHelper = &platforms.PlatformHelper{Orchestrator: orchestrator, Hypervisor: openstack}
 
 		// daemon initialization default mocks
 		hostHelper.EXPECT().CheckRDMAEnabled().Return(true, nil)
@@ -306,7 +312,7 @@ func createNode(nodeName string) (*corev1.Node, *sriovnetworkv1.SriovNetworkNode
 
 func createDaemon(
 	hostHelper helper.HostHelpersInterface,
-	platformHelper platforms.Interface,
+	platformHelper *platforms.PlatformHelper,
 	featureGates featuregate.FeatureGate,
 	disablePlugins []string) *daemon.NodeReconciler {
 	kClient, err := client.New(

@@ -22,7 +22,8 @@ import (
 	constants "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/consts"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/drain"
 	snolog "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/log"
-	mock_platforms "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/mock"
+	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms"
+	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/orchestrator/mock"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vars"
 )
 
@@ -32,7 +33,8 @@ var (
 	drn            drain.DrainInterface
 	t              FullGinkgoTInterface
 	mockCtrl       *gomock.Controller
-	platformHelper *mock_platforms.MockInterface
+	orchestrator   *orchestratorMock.MockOrchestrationInterface
+	platformHelper *platforms.PlatformHelper
 )
 
 var _ = Describe("Drainer", Ordered, func() {
@@ -51,7 +53,7 @@ var _ = Describe("Drainer", Ordered, func() {
 
 		snolog.SetLogLevel(2)
 		// Check if the environment variable CLUSTER_TYPE is set
-		if clusterType, ok := os.LookupEnv("CLUSTER_TYPE"); ok && clusterType == constants.ClusterTypeOpenshift {
+		if clusterType, ok := os.LookupEnv("CLUSTER_TYPE"); ok && constants.ClusterType(clusterType) == constants.ClusterTypeOpenshift {
 			vars.ClusterType = constants.ClusterTypeOpenshift
 		} else {
 			vars.ClusterType = constants.ClusterTypeKubernetes
@@ -64,7 +66,15 @@ var _ = Describe("Drainer", Ordered, func() {
 
 		t = GinkgoT()
 		mockCtrl = gomock.NewController(t)
-		platformHelper = mock_platforms.NewMockInterface(mockCtrl)
+		orchestrator = orchestratorMock.NewMockOrchestrationInterface(mockCtrl)
+		platformHelper = &platforms.PlatformHelper{Orchestrator: orchestrator, Hypervisor: nil}
+
+		orchestrator.EXPECT().ClusterType().DoAndReturn(func() constants.ClusterType {
+			if vars.ClusterType == constants.ClusterTypeOpenshift {
+				return constants.ClusterTypeOpenshift
+			}
+			return constants.ClusterTypeKubernetes
+		}).AnyTimes()
 
 		// new drainer
 		var err error
@@ -88,7 +98,7 @@ var _ = Describe("Drainer", Ordered, func() {
 	Context("DrainNode", func() {
 		It("should failed if the platform is not able to drain", func() {
 			n, _ := createNode("node0")
-			platformHelper.EXPECT().OpenshiftBeforeDrainNode(ctx, n).Return(false, fmt.Errorf("failed"))
+			orchestrator.EXPECT().BeforeDrainNode(ctx, n).Return(false, fmt.Errorf("failed"))
 
 			completed, err := drn.DrainNode(ctx, n, false, false)
 			Expect(err).To(HaveOccurred())
@@ -97,7 +107,7 @@ var _ = Describe("Drainer", Ordered, func() {
 
 		It("should return not completed base on OpenshiftBeforeDrainNode call", func() {
 			n, _ := createNode("node0")
-			platformHelper.EXPECT().OpenshiftBeforeDrainNode(ctx, n).Return(false, nil)
+			orchestrator.EXPECT().BeforeDrainNode(ctx, n).Return(false, nil)
 
 			completed, err := drn.DrainNode(ctx, n, false, false)
 			Expect(err).ToNot(HaveOccurred())
@@ -114,7 +124,7 @@ var _ = Describe("Drainer", Ordered, func() {
 				drain.DrainTimeOut = originalDrainTimeOut
 			}()
 
-			platformHelper.EXPECT().OpenshiftBeforeDrainNode(ctx, nCopy).Return(true, nil)
+			orchestrator.EXPECT().BeforeDrainNode(ctx, nCopy).Return(true, nil)
 
 			_, err := drn.DrainNode(ctx, nCopy, false, false)
 			Expect(err).To(HaveOccurred())
@@ -122,7 +132,7 @@ var _ = Describe("Drainer", Ordered, func() {
 
 		It("should return error if not able to drain the node", func() {
 			n, _ := createNode("node0")
-			platformHelper.EXPECT().OpenshiftBeforeDrainNode(ctx, n).Return(true, nil)
+			orchestrator.EXPECT().BeforeDrainNode(ctx, n).Return(true, nil)
 			createPodWithFinalizerOnNode(ctx, "test-node-0", "node0")
 			originalDrainTimeOut := drain.DrainTimeOut
 			drain.DrainTimeOut = 3 * time.Second
@@ -141,7 +151,7 @@ var _ = Describe("Drainer", Ordered, func() {
 			n.Status.Capacity = resources
 			err := k8sClient.Status().Update(ctx, n)
 			Expect(err).ToNot(HaveOccurred())
-			platformHelper.EXPECT().OpenshiftBeforeDrainNode(ctx, n).Return(true, nil)
+			orchestrator.EXPECT().BeforeDrainNode(ctx, n).Return(true, nil)
 			createPodOnNode(ctx, "regular-pod", "node1")
 			createPodWithSriovDeviceOnNode(ctx, "sriov-pod", "node1")
 
@@ -183,7 +193,7 @@ var _ = Describe("Drainer", Ordered, func() {
 		It("should return error if OpenshiftAfterCompleteDrainNode failed", func() {
 			n, _ := createNode("node0")
 			n.Spec.Unschedulable = true
-			platformHelper.EXPECT().OpenshiftAfterCompleteDrainNode(ctx, n).Return(false, fmt.Errorf("test"))
+			orchestrator.EXPECT().AfterCompleteDrainNode(ctx, n).Return(false, fmt.Errorf("test"))
 
 			completed, err := drn.CompleteDrainNode(ctx, n)
 			Expect(err).To(HaveOccurred())
@@ -193,7 +203,7 @@ var _ = Describe("Drainer", Ordered, func() {
 		It("should return completed", func() {
 			n, _ := createNode("node0")
 			n.Spec.Unschedulable = true
-			platformHelper.EXPECT().OpenshiftAfterCompleteDrainNode(ctx, n).Return(true, nil)
+			orchestrator.EXPECT().AfterCompleteDrainNode(ctx, n).Return(true, nil)
 
 			completed, err := drn.CompleteDrainNode(ctx, n)
 			Expect(err).ToNot(HaveOccurred())

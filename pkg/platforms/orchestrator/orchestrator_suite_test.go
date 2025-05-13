@@ -1,4 +1,4 @@
-package openshift_test
+package orchestrator_test
 
 import (
 	"context"
@@ -135,5 +135,5 @@ var _ = AfterSuite(func() {
 
 func TestOpenshift(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Openshift Suite")
+	RunSpecs(t, "Orchestration Suite")
 }

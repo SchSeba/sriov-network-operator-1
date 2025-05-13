@@ -15,7 +15,8 @@ import (
 	helperMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/helper/mock"
 	hosttypes "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/host/types"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms"
-	platformsMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/mock"
+	openstackMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/hypervisor/openstack/mock"
+	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/orchestrator/mock"
 	plugin "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins/generic"
 	pluginsMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins/mock"
@@ -113,7 +114,9 @@ func (ns *nodeStateContainsDeviceMatcher) String() string {
 var _ = Describe("Service", func() {
 	var (
 		hostHelpers    *helperMock.MockHostHelpersInterface
-		platformHelper *platformsMock.MockInterface
+		orchestrator   *orchestratorMock.MockOrchestrationInterface
+		openstack      *openstackMock.MockOpenstackInterface
+		platformHelper *platforms.PlatformHelper
 		genericPlugin  *pluginsMock.MockVendorPlugin
 		virtualPlugin  *pluginsMock.MockVendorPlugin
 
@@ -126,7 +129,9 @@ var _ = Describe("Service", func() {
 
 		testCtrl = gomock.NewController(GinkgoT())
 		hostHelpers = helperMock.NewMockHostHelpersInterface(testCtrl)
-		platformHelper = platformsMock.NewMockInterface(testCtrl)
+		orchestrator = orchestratorMock.NewMockOrchestrationInterface(testCtrl)
+		openstack = openstackMock.NewMockOpenstackInterface(testCtrl)
+		platformHelper = &platforms.PlatformHelper{Orchestrator: orchestrator, Hypervisor: openstack}
 		genericPlugin = pluginsMock.NewMockVendorPlugin(testCtrl)
 		virtualPlugin = pluginsMock.NewMockVendorPlugin(testCtrl)
 
@@ -139,7 +144,7 @@ var _ = Describe("Service", func() {
 		newHostHelpersFunc = func() (helper.HostHelpersInterface, error) {
 			return hostHelpers, nil
 		}
-		newPlatformHelperFunc = func() (platforms.Interface, error) {
+		newPlatformHelperFunc = func() (*platforms.PlatformHelper, error) {
 			return platformHelper, nil
 		}
 
@@ -181,8 +186,8 @@ var _ = Describe("Service", func() {
 		hostHelpers.EXPECT().RemoveSriovResult().Return(nil)
 		hostHelpers.EXPECT().WriteSriovResult(&hosttypes.SriovResult{SyncStatus: consts.SyncStatusInProgress})
 
-		platformHelper.EXPECT().CreateOpenstackDevicesInfo().Return(nil)
-		platformHelper.EXPECT().DiscoverSriovDevicesVirtual().Return([]sriovnetworkv1.InterfaceExt{{
+		openstack.EXPECT().CreateOpenstackDevicesInfo().Return(nil)
+		openstack.EXPECT().DiscoverSriovDevicesVirtual().Return([]sriovnetworkv1.InterfaceExt{{
 			Name: "enp216s0f0np0",
 		}}, nil)
 

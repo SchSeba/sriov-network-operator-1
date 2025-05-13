@@ -104,7 +104,7 @@ func (dn *NodeReconciler) updateStatusFromHost(nodeState *sriovnetworkv1.SriovNe
 	var err error
 
 	if vars.PlatformType == consts.VirtualOpenStack {
-		ifaces, err = dn.platformHelpers.DiscoverSriovDevicesVirtual()
+		ifaces, err = dn.platformHelpers.Hypervisor.DiscoverSriovDevicesVirtual()
 		if err != nil {
 			return err
 		}
