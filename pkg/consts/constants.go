@@ -88,6 +88,9 @@ const (
 	DrainEvicted = "Evicted"
 	DrainEvict   = "evict"
 
+	PhasePre  = "pre"
+	PhasePost = "post"
+
 	MCPPauseAnnotationState = "sriovnetwork.openshift.io/state"
 	MCPPauseAnnotationTime  = "sriovnetwork.openshift.io/time"
 

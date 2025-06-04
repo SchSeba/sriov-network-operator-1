@@ -142,6 +142,8 @@ type SriovInterface interface {
 		ifaceStatuses []sriovnetworkv1.InterfaceExt, skipVFConfiguration bool) error
 	// ConfigSriovInterfaces configure virtual functions for virtual environments with the desired configuration
 	ConfigSriovDeviceVirtual(iface *sriovnetworkv1.Interface) error
+	// GetInterfaces return a list of physical interfaces on the node
+	GetInterfaces() ([]sriovnetworkv1.InterfaceExt, error)
 }
 
 type UdevInterface interface {

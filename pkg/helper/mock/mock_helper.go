@@ -476,6 +476,21 @@ func (mr *MockHostHelpersInterfaceMockRecorder) GetInterfaceIndex(pciAddr any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInterfaceIndex", reflect.TypeOf((*MockHostHelpersInterface)(nil).GetInterfaceIndex), pciAddr)
 }
 
+// GetInterfaces mocks base method.
+func (m *MockHostHelpersInterface) GetInterfaces() ([]v1.InterfaceExt, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetInterfaces")
+	ret0, _ := ret[0].([]v1.InterfaceExt)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetInterfaces indicates an expected call of GetInterfaces.
+func (mr *MockHostHelpersInterfaceMockRecorder) GetInterfaces() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInterfaces", reflect.TypeOf((*MockHostHelpersInterface)(nil).GetInterfaces))
+}
+
 // GetLinkType mocks base method.
 func (m *MockHostHelpersInterface) GetLinkType(name string) string {
 	m.ctrl.T.Helper()
@@ -663,6 +678,21 @@ func (m *MockHostHelpersInterface) HasDriver(pciAddr string) (bool, string) {
 func (mr *MockHostHelpersInterfaceMockRecorder) HasDriver(pciAddr any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasDriver", reflect.TypeOf((*MockHostHelpersInterface)(nil).HasDriver), pciAddr)
+}
+
+// HttpGetFetchData mocks base method.
+func (m *MockHostHelpersInterface) HttpGetFetchData(arg0 string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HttpGetFetchData", arg0)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HttpGetFetchData indicates an expected call of HttpGetFetchData.
+func (mr *MockHostHelpersInterfaceMockRecorder) HttpGetFetchData(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HttpGetFetchData", reflect.TypeOf((*MockHostHelpersInterface)(nil).HttpGetFetchData), arg0)
 }
 
 // IsKernelArgsSet mocks base method.

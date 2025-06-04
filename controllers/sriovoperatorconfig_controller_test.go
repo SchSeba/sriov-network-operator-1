@@ -27,8 +27,7 @@ import (
 	sriovnetworkv1 "github.com/k8snetworkplumbingwg/sriov-network-operator/api/v1"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/consts"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/featuregate"
-	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms"
-	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/orchestrator/mock"
+	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/orchestrator/mock"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vars"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/test/util"
 )
@@ -60,8 +59,7 @@ var _ = Describe("SriovOperatorConfig controller", Ordered, func() {
 
 		t := GinkgoT()
 		mockCtrl := gomock.NewController(t)
-		orchestrator := orchestratorMock.NewMockOrchestrationInterface(mockCtrl)
-		platformHelper := &platforms.PlatformHelper{Orchestrator: orchestrator, Hypervisor: nil}
+		orchestrator := orchestratorMock.NewMockInterface(mockCtrl)
 
 		orchestrator.EXPECT().ClusterType().DoAndReturn(func() consts.ClusterType {
 			if vars.ClusterType == consts.ClusterTypeOpenshift {
@@ -81,7 +79,7 @@ var _ = Describe("SriovOperatorConfig controller", Ordered, func() {
 		err = (&SriovOperatorConfigReconciler{
 			Client:            k8sManager.GetClient(),
 			Scheme:            k8sManager.GetScheme(),
-			PlatformHelper:    platformHelper,
+			Orchestrator:      orchestrator,
 			FeatureGate:       featuregate.New(),
 			UncachedAPIReader: k8sManager.GetAPIReader(),
 		}).SetupWithManager(k8sManager)

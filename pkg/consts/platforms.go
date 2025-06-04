@@ -5,6 +5,7 @@ import "fmt"
 type ClusterType string
 
 const (
+	ClusterTypeNone       ClusterType = "none" // we use this one for systemd
 	ClusterTypeOpenshift  ClusterType = "openshift"
 	ClusterTypeKubernetes ClusterType = "kubernetes"
 )

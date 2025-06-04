@@ -14,9 +14,7 @@ import (
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/helper"
 	helperMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/helper/mock"
 	hosttypes "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/host/types"
-	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms"
-	openstackMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/hypervisor/openstack/mock"
-	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/orchestrator/mock"
+	platformMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platform/mock"
 	plugin "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins/generic"
 	pluginsMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins/mock"
@@ -26,12 +24,10 @@ func restoreOrigFuncs() {
 	origNewGenericPluginFunc := newGenericPluginFunc
 	origNewVirtualPluginFunc := newVirtualPluginFunc
 	origNewHostHelpersFunc := newHostHelpersFunc
-	origNewPlatformHelperFunc := newPlatformHelperFunc
 	DeferCleanup(func() {
 		newGenericPluginFunc = origNewGenericPluginFunc
 		newVirtualPluginFunc = origNewVirtualPluginFunc
 		newHostHelpersFunc = origNewHostHelpersFunc
-		newPlatformHelperFunc = origNewPlatformHelperFunc
 	})
 }
 
@@ -113,12 +109,10 @@ func (ns *nodeStateContainsDeviceMatcher) String() string {
 
 var _ = Describe("Service", func() {
 	var (
-		hostHelpers    *helperMock.MockHostHelpersInterface
-		orchestrator   *orchestratorMock.MockOrchestrationInterface
-		openstack      *openstackMock.MockOpenstackInterface
-		platformHelper *platforms.PlatformHelper
-		genericPlugin  *pluginsMock.MockVendorPlugin
-		virtualPlugin  *pluginsMock.MockVendorPlugin
+		hostHelpers   *helperMock.MockHostHelpersInterface
+		platform      *platformMock.MockInterface
+		genericPlugin *pluginsMock.MockVendorPlugin
+		virtualPlugin *pluginsMock.MockVendorPlugin
 
 		testCtrl  *gomock.Controller
 		testError = fmt.Errorf("test")
@@ -129,9 +123,7 @@ var _ = Describe("Service", func() {
 
 		testCtrl = gomock.NewController(GinkgoT())
 		hostHelpers = helperMock.NewMockHostHelpersInterface(testCtrl)
-		orchestrator = orchestratorMock.NewMockOrchestrationInterface(testCtrl)
-		openstack = openstackMock.NewMockOpenstackInterface(testCtrl)
-		platformHelper = &platforms.PlatformHelper{Orchestrator: orchestrator, Hypervisor: openstack}
+		platform = platformMock.NewMockInterface(testCtrl)
 		genericPlugin = pluginsMock.NewMockVendorPlugin(testCtrl)
 		virtualPlugin = pluginsMock.NewMockVendorPlugin(testCtrl)
 
@@ -144,10 +136,6 @@ var _ = Describe("Service", func() {
 		newHostHelpersFunc = func() (helper.HostHelpersInterface, error) {
 			return hostHelpers, nil
 		}
-		newPlatformHelperFunc = func() (*platforms.PlatformHelper, error) {
-			return platformHelper, nil
-		}
-
 	})
 	AfterEach(func() {
 		phaseArg = ""
@@ -155,15 +143,12 @@ var _ = Describe("Service", func() {
 	})
 
 	It("Pre phase - baremetal cluster", func() {
-		phaseArg = PhasePre
+		phaseArg = consts.PhasePre
 		hostHelpers.EXPECT().TryGetInterfaceName("0000:d8:00.0").Return("enp216s0f0np0")
 		hostHelpers.EXPECT().WaitUdevEventsProcessed(60).Return(nil)
 		hostHelpers.EXPECT().CheckRDMAEnabled().Return(true, nil)
 		hostHelpers.EXPECT().TryEnableTun().Return()
 		hostHelpers.EXPECT().TryEnableVhostNet().Return()
-		hostHelpers.EXPECT().DiscoverSriovDevices(gomock.Any()).Return([]sriovnetworkv1.InterfaceExt{{
-			Name: "enp216s0f0np0",
-		}}, nil)
 		hostHelpers.EXPECT().ReadConfFile().Return(getTestSriovInterfaceConfig(0), nil)
 		hostHelpers.EXPECT().ReadSriovSupportedNics().Return(testSriovSupportedNicIDs, nil)
 		hostHelpers.EXPECT().RemoveSriovResult().Return(nil)
@@ -172,12 +157,17 @@ var _ = Describe("Service", func() {
 		genericPlugin.EXPECT().OnNodeStateChange(newNodeStateContainsDeviceMatcher("enp216s0f0np0")).Return(true, false, nil)
 		genericPlugin.EXPECT().Apply().Return(nil)
 
+		platform.EXPECT().SystemdGetPlugin(phaseArg).Return(genericPlugin, nil)
+		platform.EXPECT().DiscoverSriovDevices().Return([]sriovnetworkv1.InterfaceExt{{
+			Name: "enp216s0f0np0",
+		}}, nil)
+
 		Expect(runServiceCmd(&cobra.Command{}, []string{})).NotTo(HaveOccurred())
 		Expect(testCtrl.Satisfied()).To(BeTrue())
 	})
 
 	It("Pre phase - virtual cluster", func() {
-		phaseArg = PhasePre
+		phaseArg = consts.PhasePre
 		hostHelpers.EXPECT().CheckRDMAEnabled().Return(true, nil)
 		hostHelpers.EXPECT().TryEnableTun().Return()
 		hostHelpers.EXPECT().TryEnableVhostNet().Return()
@@ -186,8 +176,8 @@ var _ = Describe("Service", func() {
 		hostHelpers.EXPECT().RemoveSriovResult().Return(nil)
 		hostHelpers.EXPECT().WriteSriovResult(&hosttypes.SriovResult{SyncStatus: consts.SyncStatusInProgress})
 
-		openstack.EXPECT().CreateOpenstackDevicesInfo().Return(nil)
-		openstack.EXPECT().DiscoverSriovDevicesVirtual().Return([]sriovnetworkv1.InterfaceExt{{
+		platform.EXPECT().SystemdGetPlugin(phaseArg).Return(virtualPlugin, nil)
+		platform.EXPECT().DiscoverSriovDevices().Return([]sriovnetworkv1.InterfaceExt{{
 			Name: "enp216s0f0np0",
 		}}, nil)
 
@@ -199,7 +189,7 @@ var _ = Describe("Service", func() {
 	})
 
 	It("Pre phase - apply failed", func() {
-		phaseArg = PhasePre
+		phaseArg = consts.PhasePre
 		hostHelpers.EXPECT().TryGetInterfaceName("0000:d8:00.0").Return("enp216s0f0np0")
 		hostHelpers.EXPECT().WaitUdevEventsProcessed(60).Return(nil)
 		hostHelpers.EXPECT().CheckRDMAEnabled().Return(true, nil)
@@ -221,7 +211,7 @@ var _ = Describe("Service", func() {
 	})
 
 	It("Post phase - baremetal cluster", func() {
-		phaseArg = PhasePost
+		phaseArg = consts.PhasePost
 		hostHelpers.EXPECT().TryGetInterfaceName("0000:d8:00.0").Return("enp216s0f0np0")
 		hostHelpers.EXPECT().WaitUdevEventsProcessed(60).Return(nil)
 		hostHelpers.EXPECT().DiscoverSriovDevices(gomock.Any()).Return([]sriovnetworkv1.InterfaceExt{{
@@ -240,7 +230,7 @@ var _ = Describe("Service", func() {
 	})
 
 	It("Post phase - virtual cluster", func() {
-		phaseArg = PhasePost
+		phaseArg = consts.PhasePost
 		hostHelpers.EXPECT().ReadConfFile().Return(getTestSriovInterfaceConfig(1), nil)
 		hostHelpers.EXPECT().ReadSriovSupportedNics().Return(testSriovSupportedNicIDs, nil)
 		hostHelpers.EXPECT().ReadSriovResult().Return(getTestResultFileContent("InProgress", ""), nil)
@@ -251,7 +241,7 @@ var _ = Describe("Service", func() {
 	})
 
 	It("Post phase - wrong result of the pre phase", func() {
-		phaseArg = PhasePost
+		phaseArg = consts.PhasePost
 		hostHelpers.EXPECT().ReadConfFile().Return(getTestSriovInterfaceConfig(1), nil)
 		hostHelpers.EXPECT().ReadSriovSupportedNics().Return(testSriovSupportedNicIDs, nil)
 		hostHelpers.EXPECT().ReadSriovResult().Return(getTestResultFileContent("Failed", "pretest"), nil)

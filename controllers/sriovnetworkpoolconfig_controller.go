@@ -18,7 +18,7 @@ import (
 
 	sriovnetworkv1 "github.com/k8snetworkplumbingwg/sriov-network-operator/api/v1"
 	constants "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/consts"
-	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms"
+	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/orchestrator"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/render"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vars"
 )
@@ -26,8 +26,8 @@ import (
 // SriovNetworkPoolConfigReconciler reconciles a SriovNetworkPoolConfig object
 type SriovNetworkPoolConfigReconciler struct {
 	client.Client
-	Scheme         *runtime.Scheme
-	PlatformHelper *platforms.PlatformHelper
+	Scheme       *runtime.Scheme
+	Orchestrator orchestrator.Interface
 }
 
 const (
@@ -51,8 +51,8 @@ func (r *SriovNetworkPoolConfigReconciler) Reconcile(ctx context.Context, req ct
 	logger := log.FromContext(ctx).WithValues("sriovnetworkpoolconfig", req.NamespacedName)
 
 	isHypershift := false
-	if r.PlatformHelper.Orchestrator.ClusterType() == constants.ClusterTypeOpenshift &&
-		r.PlatformHelper.Orchestrator.Flavor() == constants.ClusterFlavorHypershift {
+	if r.Orchestrator.ClusterType() == constants.ClusterTypeOpenshift &&
+		r.Orchestrator.Flavor() == constants.ClusterFlavorHypershift {
 		isHypershift = true
 		logger = logger.WithValues("isHypershift", isHypershift)
 	}

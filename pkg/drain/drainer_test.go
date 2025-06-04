@@ -22,19 +22,17 @@ import (
 	constants "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/consts"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/drain"
 	snolog "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/log"
-	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms"
-	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/orchestrator/mock"
+	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/orchestrator/mock"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vars"
 )
 
 var (
-	cancel         context.CancelFunc
-	ctx            context.Context
-	drn            drain.DrainInterface
-	t              FullGinkgoTInterface
-	mockCtrl       *gomock.Controller
-	orchestrator   *orchestratorMock.MockOrchestrationInterface
-	platformHelper *platforms.PlatformHelper
+	cancel       context.CancelFunc
+	ctx          context.Context
+	drn          drain.DrainInterface
+	t            FullGinkgoTInterface
+	mockCtrl     *gomock.Controller
+	orchestrator *orchestratorMock.MockInterface
 )
 
 var _ = Describe("Drainer", Ordered, func() {
@@ -66,8 +64,7 @@ var _ = Describe("Drainer", Ordered, func() {
 
 		t = GinkgoT()
 		mockCtrl = gomock.NewController(t)
-		orchestrator = orchestratorMock.NewMockOrchestrationInterface(mockCtrl)
-		platformHelper = &platforms.PlatformHelper{Orchestrator: orchestrator, Hypervisor: nil}
+		orchestrator = orchestratorMock.NewMockInterface(mockCtrl)
 
 		orchestrator.EXPECT().ClusterType().DoAndReturn(func() constants.ClusterType {
 			if vars.ClusterType == constants.ClusterTypeOpenshift {
@@ -78,7 +75,7 @@ var _ = Describe("Drainer", Ordered, func() {
 
 		// new drainer
 		var err error
-		drn, err = drain.NewDrainer(platformHelper)
+		drn, err = drain.NewDrainer(orchestrator)
 		Expect(err).ToNot(HaveOccurred())
 	})
 

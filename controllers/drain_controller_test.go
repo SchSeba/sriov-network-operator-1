@@ -21,8 +21,7 @@ import (
 
 	sriovnetworkv1 "github.com/k8snetworkplumbingwg/sriov-network-operator/api/v1"
 	constants "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/consts"
-	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms"
-	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/orchestrator/mock"
+	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/orchestrator/mock"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/utils"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vars"
 )
@@ -39,9 +38,7 @@ var _ = Describe("Drain Controller", Ordered, func() {
 
 		t := GinkgoT()
 		mockCtrl := gomock.NewController(t)
-		orchestrator := orchestratorMock.NewMockOrchestrationInterface(mockCtrl)
-		platformHelper := &platforms.PlatformHelper{Orchestrator: orchestrator, Hypervisor: nil}
-
+		orchestrator := orchestratorMock.NewMockInterface(mockCtrl)
 		orchestrator.EXPECT().BeforeDrainNode(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 		orchestrator.EXPECT().AfterCompleteDrainNode(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 
@@ -61,7 +58,7 @@ var _ = Describe("Drain Controller", Ordered, func() {
 		drainController, err := NewDrainReconcileController(drainKClient,
 			k8sManager.GetScheme(),
 			k8sManager.GetEventRecorderFor("operator"),
-			platformHelper)
+			orchestrator)
 		Expect(err).ToNot(HaveOccurred())
 		err = drainController.SetupWithManager(k8sManager)
 		Expect(err).ToNot(HaveOccurred())

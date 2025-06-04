@@ -26,9 +26,8 @@ import (
 	mock_helper "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/helper/mock"
 	hostTypes "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/host/types"
 	snolog "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/log"
-	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms"
-	openstackMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/hypervisor/openstack/mock"
-	orchestratorMock "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platforms/orchestrator/mock"
+	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platform"
+	mock_platform "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/platform/mock"
 
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vars"
 )
@@ -42,12 +41,10 @@ var (
 	wg            sync.WaitGroup
 	startDaemon   func(dc *daemon.NodeReconciler)
 
-	t              FullGinkgoTInterface
-	mockCtrl       *gomock.Controller
-	hostHelper     *mock_helper.MockHostHelpersInterface
-	orchestrator   *orchestratorMock.MockOrchestrationInterface
-	openstack      *openstackMock.MockOpenstackInterface
-	platformHelper *platforms.PlatformHelper
+	t            FullGinkgoTInterface
+	mockCtrl     *gomock.Controller
+	hostHelper   *mock_helper.MockHostHelpersInterface
+	platformMock *mock_platform.MockInterface
 )
 
 const (
@@ -102,9 +99,7 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 		t = GinkgoT()
 		mockCtrl = gomock.NewController(t)
 		hostHelper = mock_helper.NewMockHostHelpersInterface(mockCtrl)
-		orchestrator = orchestratorMock.NewMockOrchestrationInterface(mockCtrl)
-		openstack = openstackMock.NewMockOpenstackInterface(mockCtrl)
-		platformHelper = &platforms.PlatformHelper{Orchestrator: orchestrator, Hypervisor: openstack}
+		platformMock = mock_platform.NewMockInterface(mockCtrl)
 
 		// daemon initialization default mocks
 		hostHelper.EXPECT().CheckRDMAEnabled().Return(true, nil)
@@ -197,7 +192,7 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 
 			featureGates := featuregate.New()
 			featureGates.Init(map[string]bool{})
-			dc := createDaemon(hostHelper, platformHelper, featureGates, []string{})
+			dc := createDaemon(platformMock, featureGates, []string{})
 			startDaemon(dc)
 
 			_, nodeState := createNode("node1")
@@ -311,8 +306,7 @@ func createNode(nodeName string) (*corev1.Node, *sriovnetworkv1.SriovNetworkNode
 }
 
 func createDaemon(
-	hostHelper helper.HostHelpersInterface,
-	platformHelper *platforms.PlatformHelper,
+	platformInterface platform.Interface,
 	featureGates featuregate.FeatureGate,
 	disablePlugins []string) *daemon.NodeReconciler {
 	kClient, err := client.New(
@@ -327,8 +321,8 @@ func createDaemon(
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	configController := daemon.New(kClient, hostHelper, platformHelper, eventRecorder, featureGates, disablePlugins)
-	err = configController.Init()
+	configController := daemon.New(kClient, platformInterface, eventRecorder, featureGates)
+	err = configController.Init(disablePlugins)
 	Expect(err).ToNot(HaveOccurred())
 	err = configController.SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
