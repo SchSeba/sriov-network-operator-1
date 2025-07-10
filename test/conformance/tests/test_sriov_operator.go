@@ -90,10 +90,15 @@ var _ = Describe("[sriov] operator", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(len(selectedNodes)).To(BeNumerically(">", 0), "There must be at least one worker")
-				candidate := selectedNodes[0]
-				candidate.Labels["sriovenabled"] = "true"
-				_, err = clients.CoreV1Interface.Nodes().Update(context.Background(), &candidate, metav1.UpdateOptions{})
-				Expect(err).ToNot(HaveOccurred())
+				Eventually(func() error {
+					candidate, err := clients.CoreV1Interface.Nodes().Get(context.Background(), selectedNodes[0].Name, metav1.GetOptions{})
+					if err != nil {
+						return err
+					}
+					candidate.Labels["sriovenabled"] = "true"
+					_, err = clients.CoreV1Interface.Nodes().Update(context.Background(), candidate, metav1.UpdateOptions{})
+					return err
+				}, 10*time.Second, time.Second).ShouldNot(HaveOccurred())
 
 				By("Setting the node selector for each daemon")
 				cfg := sriovv1.SriovOperatorConfig{}
