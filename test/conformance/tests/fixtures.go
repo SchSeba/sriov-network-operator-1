@@ -78,7 +78,7 @@ var _ = AfterSuite(func() {
 })
 
 // assertCondition verifies that a SR-IOV resource has the expected condition status.
-// Supported object types: *sriovv1.SriovNetwork, *sriovv1.SriovNetworkPoolConfig, *sriovv1.SriovNetworkNodePolicy
+// Supported object types: *sriovv1.SriovNetwork
 func assertCondition(obj runtimeclient.Object, conditionType string, expectedStatus metav1.ConditionStatus) {
 	name := obj.GetName()
 	namespace := obj.GetNamespace()
@@ -91,10 +91,6 @@ func assertCondition(obj runtimeclient.Object, conditionType string, expectedSta
 		var conditions []metav1.Condition
 		switch o := obj.(type) {
 		case *sriovv1.SriovNetwork:
-			conditions = o.Status.Conditions
-		case *sriovv1.SriovNetworkPoolConfig:
-			conditions = o.Status.Conditions
-		case *sriovv1.SriovNetworkNodePolicy:
 			conditions = o.Status.Conditions
 		default:
 			g.Expect(fmt.Errorf("unsupported object type %T", obj)).ToNot(HaveOccurred())
