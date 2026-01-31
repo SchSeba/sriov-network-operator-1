@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -161,7 +162,9 @@ func (n *network) GetNetdevMTU(pciAddr string) int {
 		return 0
 	}
 
-	link, err := n.netlinkLib.LinkByName(ifaceName)
+	// Use LinkByNameWithBasicInfo which falls back to sysfs on EMSGSIZE.
+	// This handles InfiniBand devices with many VFs.
+	link, err := n.netlinkLib.LinkByNameWithBasicInfo(ifaceName)
 	if err != nil {
 		log.Log.Error(err, "GetNetdevMTU(): fail to get Link ", "device", ifaceName)
 		return 0
@@ -184,10 +187,21 @@ func (n *network) SetNetdevMTU(pciAddr string, mtu int) error {
 			return fmt.Errorf("failed to get netdevice for device %s", pciAddr)
 		}
 
+		// Try standard LinkByName first. For InfiniBand devices with many VFs, this may fail
+		// with EMSGSIZE because the kernel's netlink response exceeds the message limit.
+		// In that case, fall back to LinkByNameForSetVf which reads minimal info from sysfs.
+		// LinkSetMTU only needs the link index.
 		link, err := n.netlinkLib.LinkByName(ifaceName)
 		if err != nil {
-			log.Log.Error(err, "SetNetdevMTU(): fail to get Link ", "device", ifaceName)
-			return err
+			if errors.Is(err, syscall.EMSGSIZE) {
+				log.Log.V(2).Info("SetNetdevMTU(): LinkByName failed with EMSGSIZE, using sysfs fallback",
+					"device", ifaceName)
+				link, err = n.netlinkLib.LinkByNameForSetVf(ifaceName)
+			}
+			if err != nil {
+				log.Log.Error(err, "SetNetdevMTU(): fail to get Link ", "device", ifaceName)
+				return err
+			}
 		}
 		return n.netlinkLib.LinkSetMTU(link, mtu)
 	}, backoff.WithMaxRetries(b, 10))
@@ -203,7 +217,9 @@ func (n *network) SetNetdevMTU(pciAddr string, mtu int) error {
 // retrieved.
 func (n *network) GetNetDevMac(ifaceName string) string {
 	log.Log.V(2).Info("GetNetDevMac(): get Mac", "device", ifaceName)
-	link, err := n.netlinkLib.LinkByName(ifaceName)
+	// Use LinkByNameWithBasicInfo which falls back to sysfs on EMSGSIZE.
+	// This handles InfiniBand devices with many VFs.
+	link, err := n.netlinkLib.LinkByNameWithBasicInfo(ifaceName)
 	if err != nil {
 		log.Log.Error(err, "GetNetDevMac(): failed to get Link", "device", ifaceName)
 		return ""

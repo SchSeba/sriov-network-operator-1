@@ -358,14 +358,14 @@ var _ = Describe("Network", func() {
 		})
 		It("should return 0 if not able to get interface by name", func() {
 			dputilsLibMock.EXPECT().GetNetNames("0000:d8:00.0").Return([]string{"eno1"}, nil)
-			netlinkLibMock.EXPECT().LinkByName("eno1").Return(nil, fmt.Errorf("failed to get interface"))
+			netlinkLibMock.EXPECT().LinkByNameWithBasicInfo("eno1").Return(nil, fmt.Errorf("failed to get interface"))
 			mtu := n.GetNetdevMTU("0000:d8:00.0")
 			Expect(mtu).To(Equal(0))
 		})
 		It("should return mtu for interface", func() {
 			dputilsLibMock.EXPECT().GetNetNames("0000:d8:00.0").Return([]string{"eno1"}, nil)
 			link := &netlink.GenericLink{LinkType: "PF", LinkAttrs: netlink.LinkAttrs{Name: "eno1", MTU: 1500}}
-			netlinkLibMock.EXPECT().LinkByName("eno1").Return(link, nil)
+			netlinkLibMock.EXPECT().LinkByNameWithBasicInfo("eno1").Return(link, nil)
 			mtu := n.GetNetdevMTU("0000:d8:00.0")
 			Expect(mtu).To(Equal(1500))
 		})
@@ -386,13 +386,13 @@ var _ = Describe("Network", func() {
 	})
 	Context("GetNetDevMac", func() {
 		It("should return empty mac address if not able to get interface by link", func() {
-			netlinkLibMock.EXPECT().LinkByName("eno1").Return(nil, fmt.Errorf("failed to find intreface"))
+			netlinkLibMock.EXPECT().LinkByNameWithBasicInfo("eno1").Return(nil, fmt.Errorf("failed to find intreface"))
 			mac := n.GetNetDevMac("eno1")
 			Expect(mac).To(BeEmpty())
 		})
 		It("should return interface mac address", func() {
 			link := &netlink.GenericLink{LinkType: "PF", LinkAttrs: netlink.LinkAttrs{Name: "eno1", HardwareAddr: net.HardwareAddr{0x00, 0x00, 0x5e, 0x00, 0x53, 0x01}}}
-			netlinkLibMock.EXPECT().LinkByName("eno1").Return(link, nil)
+			netlinkLibMock.EXPECT().LinkByNameWithBasicInfo("eno1").Return(link, nil)
 			mac := n.GetNetDevMac("eno1")
 			Expect(mac).To(Equal("00:00:5e:00:53:01"))
 		})

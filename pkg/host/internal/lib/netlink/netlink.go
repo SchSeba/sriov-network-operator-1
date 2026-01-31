@@ -1,9 +1,16 @@
 package netlink
 
 import (
+	"errors"
+	"fmt"
 	"net"
+	"os"
+	"strconv"
+	"strings"
+	"syscall"
 
 	"github.com/vishvananda/netlink"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func New() NetlinkLib {
@@ -24,6 +31,14 @@ type NetlinkLib interface {
 	LinkSetVfPortGUID(link Link, vf int, portguid net.HardwareAddr) error
 	// LinkByName finds a link by name and returns a pointer to the object.
 	LinkByName(name string) (Link, error)
+	// LinkByNameForSetVf returns a minimal link object (name and index only) that can be used
+	// for VF operations like LinkSetVfNodeGUID. This reads from sysfs instead of netlink
+	// to avoid the "message too long" error for InfiniBand devices with many VFs.
+	LinkByNameForSetVf(name string) (Link, error)
+	// LinkByNameWithBasicInfo returns a link with basic info (name, index, MTU, MAC, EncapType).
+	// If standard netlink query fails with EMSGSIZE (common for IB devices with many VFs),
+	// it falls back to reading from sysfs.
+	LinkByNameWithBasicInfo(name string) (Link, error)
 	// LinkByIndex finds a link by index and returns a pointer to the object.
 	LinkByIndex(index int) (Link, error)
 	// LinkList gets a list of link devices.
@@ -89,6 +104,128 @@ func (w *libWrapper) LinkSetVfPortGUID(link Link, vf int, portguid net.HardwareA
 // LinkByName finds a link by name and returns a pointer to the object.
 func (w *libWrapper) LinkByName(name string) (Link, error) {
 	return netlink.LinkByName(name)
+}
+
+// LinkByNameForSetVf returns a minimal link object (name and index only) that can be used
+// for VF operations like LinkSetVfNodeGUID. This reads from sysfs instead of netlink
+// to avoid the "message too long" error for InfiniBand devices with many VFs.
+func (w *libWrapper) LinkByNameForSetVf(name string) (Link, error) {
+	log.Log.V(2).Info("LinkByNameForSetVf(): getting minimal link info from sysfs", "name", name)
+
+	// Sanitize the interface name to prevent path traversal
+	if strings.ContainsAny(name, "/\\") {
+		return nil, fmt.Errorf("invalid interface name, contains path separators: %s", name)
+	}
+
+	// Read interface index from sysfs
+	indexPath := fmt.Sprintf("/sys/class/net/%s/ifindex", name)
+	indexData, err := os.ReadFile(indexPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read interface index from %s: %w", indexPath, err)
+	}
+
+	index, err := strconv.Atoi(strings.TrimSpace(string(indexData)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse interface index: %w", err)
+	}
+
+	// Create a minimal Device link with just name and index
+	// This is sufficient for VF operations like LinkSetVfNodeGUID
+	link := &netlink.Device{}
+	link.Attrs().Name = name
+	link.Attrs().Index = index
+
+	log.Log.V(2).Info("LinkByNameForSetVf(): created minimal link", "name", name, "index", index)
+	return link, nil
+}
+
+// LinkByNameWithBasicInfo returns a link with basic info (name, index, MTU, MAC, EncapType).
+// If standard netlink query fails with EMSGSIZE (common for IB devices with many VFs),
+// it falls back to reading from sysfs.
+func (w *libWrapper) LinkByNameWithBasicInfo(name string) (Link, error) {
+	// First, try standard LinkByName
+	link, err := netlink.LinkByName(name)
+	if err == nil {
+		return link, nil
+	}
+
+	// If it's not EMSGSIZE, return the original error
+	if !errors.Is(err, syscall.EMSGSIZE) {
+		return nil, err
+	}
+
+	log.Log.V(2).Info("LinkByNameWithBasicInfo(): LinkByName failed with EMSGSIZE, using sysfs fallback", "name", name)
+
+	// Sanitize the interface name to prevent path traversal
+	if strings.ContainsAny(name, "/\\") {
+		return nil, fmt.Errorf("invalid interface name, contains path separators: %s", name)
+	}
+
+	basePath := fmt.Sprintf("/sys/class/net/%s", name)
+
+	// Read interface index
+	indexData, err := os.ReadFile(basePath + "/ifindex")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read interface index: %w", err)
+	}
+	index, err := strconv.Atoi(strings.TrimSpace(string(indexData)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse interface index: %w", err)
+	}
+
+	// Read MTU
+	mtuData, err := os.ReadFile(basePath + "/mtu")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read MTU: %w", err)
+	}
+	mtu, err := strconv.Atoi(strings.TrimSpace(string(mtuData)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse MTU: %w", err)
+	}
+
+	// Read MAC address
+	macData, err := os.ReadFile(basePath + "/address")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read MAC address: %w", err)
+	}
+	mac, err := net.ParseMAC(strings.TrimSpace(string(macData)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse MAC address: %w", err)
+	}
+
+	// Read interface type to determine encap type
+	typeData, err := os.ReadFile(basePath + "/type")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read interface type: %w", err)
+	}
+	ifType, err := strconv.Atoi(strings.TrimSpace(string(typeData)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse interface type: %w", err)
+	}
+
+	// Map ARPHRD type to encap type string
+	// See linux/if_arp.h for ARPHRD_* constants
+	var encapType string
+	switch ifType {
+	case 1: // ARPHRD_ETHER
+		encapType = "ether"
+	case 32: // ARPHRD_INFINIBAND
+		encapType = "infiniband"
+	default:
+		encapType = fmt.Sprintf("unknown(%d)", ifType)
+	}
+
+	// Create a link with the basic info
+	link = &netlink.Device{}
+	link.Attrs().Name = name
+	link.Attrs().Index = index
+	link.Attrs().MTU = mtu
+	link.Attrs().HardwareAddr = mac
+	link.Attrs().EncapType = encapType
+
+	log.Log.V(2).Info("LinkByNameWithBasicInfo(): created link from sysfs",
+		"name", name, "index", index, "mtu", mtu, "mac", mac.String(), "encapType", encapType)
+	return link, nil
 }
 
 // LinkByIndex finds a link by index and returns a pointer to the object.

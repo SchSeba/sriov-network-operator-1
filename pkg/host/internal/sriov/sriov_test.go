@@ -77,7 +77,8 @@ var _ = Describe("SRIOV", func() {
 			hostMock.EXPECT().TryGetInterfaceName("0000:d8:00.0").Return("enp216s0f0np0")
 
 			pfLinkMock := netlinkMockPkg.NewMockLink(testCtrl)
-			netlinkLibMock.EXPECT().LinkByName("enp216s0f0np0").Return(pfLinkMock, nil)
+			// DiscoverSriovDevices uses LinkByNameWithBasicInfo for IB/EMSGSIZE fallback support
+			netlinkLibMock.EXPECT().LinkByNameWithBasicInfo("enp216s0f0np0").Return(pfLinkMock, nil)
 
 			mac, _ := net.ParseMAC("08:c0:eb:70:74:4e")
 			pfLinkMock.EXPECT().Attrs().Return(&netlink.LinkAttrs{
@@ -103,7 +104,8 @@ var _ = Describe("SRIOV", func() {
 
 			hostMock.EXPECT().TryGetInterfaceName("0000:d8:00.2").Return("enp216s0f0v0")
 			vfLinkMock := netlinkMockPkg.NewMockLink(testCtrl)
-			netlinkLibMock.EXPECT().LinkByName("enp216s0f0v0").Return(vfLinkMock, nil)
+			// getVfInfo uses LinkByNameWithBasicInfo for IB/EMSGSIZE fallback support
+			netlinkLibMock.EXPECT().LinkByNameWithBasicInfo("enp216s0f0v0").Return(vfLinkMock, nil)
 
 			mac, _ = net.ParseMAC("4e:fd:3d:08:59:b1")
 			vfLinkMock.EXPECT().Attrs().Return(&netlink.LinkAttrs{
@@ -224,7 +226,8 @@ var _ = Describe("SRIOV", func() {
 			hostMock.EXPECT().AddDisableNMUdevRule("0000:d8:00.0").Return(nil)
 			dputilsLibMock.EXPECT().GetVFList("0000:d8:00.0").Return([]string{"0000:d8:00.2", "0000:d8:00.3"}, nil).AnyTimes()
 			pfLinkMock := netlinkMockPkg.NewMockLink(testCtrl)
-			netlinkLibMock.EXPECT().LinkByName("enp216s0f0np0").Return(pfLinkMock, nil).Times(3)
+			netlinkLibMock.EXPECT().LinkByName("enp216s0f0np0").Return(pfLinkMock, nil).Times(2)
+			netlinkLibMock.EXPECT().LinkByNameWithBasicInfo("enp216s0f0np0").Return(pfLinkMock, nil)
 			pfLinkMock.EXPECT().Attrs().Return(&netlink.LinkAttrs{Flags: 0, EncapType: "ether"})
 			netlinkLibMock.EXPECT().IsLinkAdminStateUp(pfLinkMock).Return(false)
 			netlinkLibMock.EXPECT().LinkSetUp(pfLinkMock).Return(nil)
@@ -315,7 +318,8 @@ var _ = Describe("SRIOV", func() {
 			hostMock.EXPECT().AddDisableNMUdevRule("0000:d8:00.0").Return(nil)
 			dputilsLibMock.EXPECT().GetVFList("0000:d8:00.0").Return([]string{"0000:d8:00.2", "0000:d8:00.3"}, nil).AnyTimes()
 			pfLinkMock := netlinkMockPkg.NewMockLink(testCtrl)
-			netlinkLibMock.EXPECT().LinkByName("enp216s0f0np0").Return(pfLinkMock, nil).Times(3)
+			netlinkLibMock.EXPECT().LinkByName("enp216s0f0np0").Return(pfLinkMock, nil).Times(2)
+			netlinkLibMock.EXPECT().LinkByNameWithBasicInfo("enp216s0f0np0").Return(pfLinkMock, nil)
 			pfLinkMock.EXPECT().Attrs().Return(&netlink.LinkAttrs{Flags: 0, EncapType: "ether"})
 			netlinkLibMock.EXPECT().IsLinkAdminStateUp(pfLinkMock).Return(false)
 			netlinkLibMock.EXPECT().LinkSetUp(pfLinkMock).Return(nil)
@@ -350,7 +354,8 @@ var _ = Describe("SRIOV", func() {
 			hostMock.EXPECT().AddDisableNMUdevRule("0000:d8:00.1").Return(nil)
 			dputilsLibMock.EXPECT().GetVFList("0000:d8:00.1").Return([]string{"0000:d8:00.4", "0000:d8:00.5"}, nil).AnyTimes()
 			pf1LinkMock := netlinkMockPkg.NewMockLink(testCtrl)
-			netlinkLibMock.EXPECT().LinkByName("enp216s0f0np1").Return(pf1LinkMock, nil).Times(3)
+			netlinkLibMock.EXPECT().LinkByName("enp216s0f0np1").Return(pf1LinkMock, nil).Times(2)
+			netlinkLibMock.EXPECT().LinkByNameWithBasicInfo("enp216s0f0np1").Return(pf1LinkMock, nil)
 			pf1LinkMock.EXPECT().Attrs().Return(&netlink.LinkAttrs{Flags: 0, EncapType: "ether"})
 			netlinkLibMock.EXPECT().IsLinkAdminStateUp(pf1LinkMock).Return(false)
 			netlinkLibMock.EXPECT().LinkSetUp(pf1LinkMock).Return(nil)
