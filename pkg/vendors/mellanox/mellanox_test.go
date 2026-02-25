@@ -94,32 +94,36 @@ var _ = Describe("SRIOV", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("should return error if VF reset fails on primary port", func() {
+		It("should continue with firmware reset even if VF reset fails on primary port", func() {
 			mellanoxNicsStatus["0000:d8:00."] = map[string]sriovnetworkv1.InterfaceExt{
 				"0000:d8:00.0": {PciAddress: "0000:d8:00.0", Vendor: "15b3"},
 			}
 
-			// VF reset fails on primary port
+			// VF reset fails on primary port but should not block firmware reset
 			mockHostHelper.EXPECT().SetSriovNumVfs("0000:d8:00.0", 0).Return(fmt.Errorf("failed to reset VFs"))
 
+			// Firmware reset should still be called
+			u.EXPECT().RunCommand("mstfwreset", "-d", "0000:d8:00.0", "--skip_driver", "-l", "3", "-y", "reset").Return("", "", nil)
+
 			err := m.MlxResetFW([]string{"0000:d8:00.0"}, mellanoxNicsStatus)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("failed to reset VFs"))
+			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("should return error if VF reset fails on secondary port of dual-port NIC", func() {
+		It("should continue with firmware reset even if VF reset fails on secondary port of dual-port NIC", func() {
 			mellanoxNicsStatus["0000:d8:00."] = map[string]sriovnetworkv1.InterfaceExt{
 				"0000:d8:00.0": {PciAddress: "0000:d8:00.0", Vendor: "15b3"},
 				"0000:d8:00.1": {PciAddress: "0000:d8:00.1", Vendor: "15b3"},
 			}
 
-			// Primary port succeeds, secondary port fails
+			// Primary port succeeds, secondary port fails but should not block firmware reset
 			mockHostHelper.EXPECT().SetSriovNumVfs("0000:d8:00.0", 0).Return(nil)
 			mockHostHelper.EXPECT().SetSriovNumVfs("0000:d8:00.1", 0).Return(fmt.Errorf("failed to reset VFs on secondary port"))
 
+			// Firmware reset should still be called
+			u.EXPECT().RunCommand("mstfwreset", "-d", "0000:d8:00.0", "--skip_driver", "-l", "3", "-y", "reset").Return("", "", nil)
+
 			err := m.MlxResetFW([]string{"0000:d8:00.0"}, mellanoxNicsStatus)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("failed to reset VFs on secondary port"))
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("should return error if firmware reset fails", func() {

@@ -151,18 +151,20 @@ func (m *mellanoxHelper) MlxResetFW(pciAddresses []string, mellanoxNicsStatus ma
 	log.Log.Info("mellanox-plugin resetFW()")
 	var errs []error
 	for _, pciAddress := range pciAddresses {
+		// we try to set the number of VFs to 0 before firmware reset to avoid the case where the number of VFs is not 0 after the firmware reset
+		// but in case the SRIOV_EN is false, we can't set the number of VFs to 0. not sriov_numvf file in sysfs.
 		err := m.hostHelper.SetSriovNumVfs(pciAddress, 0)
 		if err != nil {
 			log.Log.Error(err, "failed to set SR-IOV number of VFs to 0 before firmware reset", "pciAddress", pciAddress)
-			return err
 		}
 
 		if IsDualPort(pciAddress, mellanoxNicsStatus) {
 			otherPortPCIAddress := getOtherPortPCIAddress(pciAddress)
+			// we try to set the number of VFs to 0 before firmware reset to avoid the case where the number of VFs is not 0 after the firmware reset
+			// but in case the SRIOV_EN is false, we can't set the number of VFs to 0. not sriov_numvf file in sysfs.
 			err := m.hostHelper.SetSriovNumVfs(otherPortPCIAddress, 0)
 			if err != nil {
 				log.Log.Error(err, "failed to set SR-IOV number of VFs to 0 before firmware reset", "pciAddress", otherPortPCIAddress)
-				return err
 			}
 		}
 
