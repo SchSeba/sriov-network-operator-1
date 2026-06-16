@@ -1,0 +1,327 @@
+# CodeRabbit configuration for sriov-network-operator
+# Inspired by https://github.com/openshift/coderabbit/blob/main/.coderabbit.yaml
+# Adapted for an open-source Kubernetes SR-IOV network operator project.
+language: en-US
+early_access: false
+enable_free_tier: true
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  in_progress_fortune: false
+  review_status: true
+  collapse_walkthrough: false
+  path_filters:
+    - "!**/vendor/**"
+    - "!vendor/**"
+    - "!**/zz_generated*"
+    - "!boilerplate/**"
+    # go.sum is deliberately kept so supply-chain path_instructions fire on it.
+  auto_review:
+    enabled: true
+    drafts: true
+
+  pre_merge_checks:
+    custom_checks:
+      # ── Security checks (adapted from prodsec) ──────────────────
+      - name: "no-weak-crypto"
+        instructions: |
+          Flag MD5, SHA1, DES, RC4, 3DES, Blowfish, ECB mode usage.
+          Flag custom crypto implementations. Flag non-constant-time
+          comparison of secrets or tokens.
+        mode: "error"
+
+      - name: "container-privileges"
+        instructions: |
+          Flag privileged: true, hostPID, hostNetwork, hostIPC,
+          SYS_ADMIN capability, running as root without justification,
+          allowPrivilegeEscalation: true in container/K8s manifests.
+
+          Exception: the SR-IOV config daemon and certain NIC plugin components
+          legitimately require host-level access (hostNetwork, hostPID, privileged).
+          Only flag these if the change is in a component that should NOT have
+          elevated privileges (e.g., the operator manager, webhook).
+        mode: "error"
+
+      - name: "no-sensitive-data-in-logs"
+        instructions: |
+          Flag logging that may expose passwords, tokens, API keys,
+          PII (email, SSN, credit card), session IDs, internal
+          hostnames, or customer data.
+        mode: "error"
+
+      # ── SR-IOV specific checks ─────────────────────────────────
+      - name: "nic-vendor-plugin-compatibility"
+        instructions: |
+          When new NIC-vendor-specific code is added, ensure it is placed in the
+          correct plugin directory under pkg/plugins/ (intel/, mellanox/, generic/,
+          virtual/, k8s/) and not embedded in generic operator or controller code.
+
+          Flag the following:
+          - Hardcoded PCI vendor/device IDs in code outside pkg/plugins/ or pkg/utils/
+          - NIC-vendor-specific logic (e.g., Mellanox ConnectX, Intel E810 specifics)
+            appearing in controllers/, pkg/daemon/, or the main operator code
+          - New vendor plugins that do not implement the Plugin interface defined
+            in pkg/plugins/plugin.go
+          - Missing capability detection: new NIC features should check for hardware
+            support before enabling
+
+          Vendor-specific code should be encapsulated in the appropriate plugin
+          directory so it can be maintained independently and tested in isolation.
+        mode: "warning"
+
+      - name: "crd-backward-compatibility"
+        instructions: |
+          When CRD types in api/v1/ are modified, check for backward compatibility:
+          - New fields MUST be optional (use pointer types with omitempty)
+          - Existing field types MUST NOT change (breaking change)
+          - Existing field names and JSON tags MUST NOT be renamed
+          - Removed fields should be deprecated first (add +deprecated marker)
+          - New enum values are safe, removing existing ones is not
+          - Validate that new fields have +kubebuilder:validation markers
+          - Ensure new fields are documented with Go doc comments
+        mode: "error"
+
+      - name: "sriov-test-quality"
+        instructions: |
+          When test code is added or modified (test/, controllers/*_test.go):
+
+          1. **Timeouts**: Eventually/Consistently calls MUST have explicit timeouts.
+             Flag any Eventually() or Consistently() without timeout arguments.
+
+          2. **Cleanup**: Tests creating Kubernetes resources MUST clean them up.
+             Flag tests that create resources without DeferCleanup, AfterEach, or
+             explicit deletion in the test body.
+
+          3. **Hardware assumptions**: E2E tests should not assume specific NIC models
+             or PCI IDs. Flag hardcoded PCI vendor/device IDs in test code that are
+             not behind environment variable checks or skip conditions.
+
+          4. **Platform assumptions**: Tests should work on both Kubernetes and OpenShift
+             unless explicitly skipped for one platform. Flag platform-specific API usage
+             without appropriate skip guards.
+        mode: "warning"
+
+  # ── Path-specific review instructions ──────────────────────────
+  path_instructions:
+
+    # ── CRD type definitions ─────────────────────────────────────
+    - path: "api/v1/**/*.go"
+      instructions: |
+        CRD type definitions for the SR-IOV network operator:
+        - New fields MUST have proper JSON tags with omitempty for optional fields
+        - Add +kubebuilder:validation: markers for field constraints
+        - Add +kubebuilder:default: markers where sensible defaults exist
+        - Ensure backward compatibility — never remove or rename existing fields
+        - Document all new fields with Go doc comments explaining purpose and valid values
+        - Verify deepcopy is regenerated (zz_generated.deepcopy.go) when types change
+        - Check that webhook validation in pkg/webhook/ covers new fields
+
+    # ── Controllers ──────────────────────────────────────────────
+    - path: "controllers/**/*.go"
+      instructions: |
+        Kubernetes controller reconcile loops:
+        - Proper error handling: return ctrl.Result{} with requeue on transient errors
+        - Use status subresource updates, not full object updates for status changes
+        - Record events for significant state transitions (Event recorder)
+        - Check for proper owner references on created resources
+        - Avoid unnecessary reconciliation: check generation or resource version
+        - Use client-go informer caching — do not make redundant API calls
+        - Ensure finalizers are handled correctly for cleanup operations
+        - Controller tests should use envtest (controller-runtime testenv)
+
+    # ── NIC vendor plugins ───────────────────────────────────────
+    - path: "pkg/plugins/**/*.go"
+      instructions: |
+        NIC vendor plugins (Intel, Mellanox/NVIDIA, generic, virtual):
+        - New plugins MUST implement the Plugin interface in pkg/plugins/plugin.go
+        - Avoid hardcoded PCI vendor/device IDs; prefer configurable mappings
+        - Check hardware capabilities before enabling features (switchdev, VF-LAG, etc.)
+        - Mellanox plugin: check for fw version requirements, SRIOV_EN enablement
+        - Intel plugin: check for proper VF configuration via sysfs
+        - Test with mock interfaces for unit testing (see pkg/plugins/mock/)
+        - Vendor-specific sysfs/procfs paths must be constants, not magic strings
+
+    # ── Config daemon ────────────────────────────────────────────
+    - path: "pkg/daemon/**/*.go"
+      instructions: |
+        Config daemon runs on host with elevated privileges:
+        - Safe file operations: use atomic writes (write-then-rename) for config files
+        - Proper systemd unit management: check unit state before start/stop/restart
+        - Safe sysfs/procfs interactions: validate paths, handle ENOENT gracefully
+        - Network device operations: proper error handling on netlink calls
+        - VF configuration: validate PF exists before configuring VFs
+        - Log at appropriate levels: errors for failures, info for state changes
+        - Must handle node reboot gracefully (idempotent configuration)
+        - Drain coordination: respect the drain controller's signals
+
+    # ── Host operations ──────────────────────────────────────────
+    - path: "pkg/host/**/*.go"
+      instructions: |
+        Host-level operations that directly manipulate network devices and kernel:
+        - Netlink calls: check for proper error handling, handle device-not-found
+        - sysfs operations: validate path existence before read/write
+        - procfs operations: parse carefully, handle format changes across kernel versions
+        - Driver binding/unbinding: ensure proper sequence (unbind old, bind new)
+        - Switchdev mode: verify eswitch mode transitions are valid
+        - Service management: use systemd D-Bus interface, not shell commands
+        - udev rules: validate syntax and test rule ordering
+        - All operations should be idempotent (safe to retry)
+
+    # ── Deployed Kubernetes manifests ────────────────────────────
+    - path: "bindata/manifests/**/*.yaml"
+      instructions: |
+        SR-IOV operator deployed manifests:
+        - Config daemon legitimately needs: hostNetwork, hostPID, privileged
+          (it configures host network devices). Do NOT flag these on the daemon DaemonSet.
+        - Webhook and operator should NOT have elevated privileges
+        - Resource limits (cpu, memory) on every container
+        - Check RBAC: ServiceAccount permissions should be least-privilege
+        - Verify tolerations: daemon must tolerate control-plane taints for
+          SR-IOV on control-plane nodes
+        - Check that image references use the correct placeholder variables
+        - Validate that ConfigMaps and Secrets are properly referenced
+        - Metrics exporter: verify ServiceMonitor/PrometheusRule if present
+
+    # ── Admission webhook ────────────────────────────────────────
+    - path: "pkg/webhook/**/*.go"
+      instructions: |
+        Webhook validation and mutation:
+        - All CRD fields must have corresponding validation logic
+        - Rejections must include clear, actionable error messages
+        - Validate resource references (e.g., resource name format, namespace existence)
+        - Check for proper handling of both CREATE and UPDATE operations
+        - Ensure defaulting webhook sets sensible defaults for optional fields
+        - Webhook must not block legitimate SR-IOV configurations
+        - Test edge cases: empty fields, maximum VF counts, invalid NIC selectors
+
+    # ── E2E and integration tests ────────────────────────────────
+    - path: "test/**/*.go"
+      instructions: |
+        E2E and integration tests (Ginkgo/Gomega):
+        - Eventually/Consistently: always specify explicit timeout and polling interval
+        - Resource cleanup: use DeferCleanup or AfterEach — never leave resources behind
+        - Skip conditions: check for required NIC capabilities before running NIC-specific tests
+        - Platform checks: guard OpenShift-specific tests with platform detection
+        - Node selection: use label selectors, not hardcoded node names
+        - Avoid assumptions about specific NIC models unless testing vendor-specific features
+        - Test names should be descriptive and stable (no dynamic content in It/Describe)
+
+    # ── Feature gates ────────────────────────────────────────────
+    - path: "pkg/featuregate/**/*.go"
+      instructions: |
+        Feature gate management:
+        - New features should start as disabled by default (alpha)
+        - Feature gate names should follow Kubernetes naming conventions (CamelCase)
+        - Document the feature gate purpose and graduation criteria
+        - Ensure feature-gated code paths have both enabled and disabled test coverage
+
+    # ── CI workflows ─────────────────────────────────────────────
+    - path: ".github/workflows/**/*"
+      instructions: |
+        CI/CD security and best practices:
+        - Pin actions by full SHA, not tag
+        - No secrets in logs; mask sensitive outputs
+        - Least privilege: minimize GITHUB_TOKEN permissions
+        - No pull_request_target with checkout of PR head
+        - Ensure test workflows run on PRs targeting the correct branches
+        - Check that image build workflows use proper tagging conventions
+
+    # ── Injection & input validation (from prodsec) ──────────────
+    - path: "**/*.go"
+      instructions: |
+        Go security (prodsec-skills):
+        - Never ignore error returns (use errcheck/golangci-lint)
+        - database/sql with placeholders; no fmt.Sprintf in queries
+        - Use stdlib crypto/* and golang.org/x/crypto; avoid third-party crypto
+        - Integer overflow: bounds-check user-supplied sizes (VF counts, MTU values)
+        - context.Context for cancellation and timeouts on all API calls
+        - Command injection: no os/exec with user-controlled input without validation
+        - Path traversal: validate sysfs/procfs paths, reject ../
+        - Deserialization: validate untrusted YAML/JSON before unmarshaling
+
+    # ── Container & image hardening (from prodsec) ───────────────
+    - path: "**/{Dockerfile,Containerfile}*"
+      instructions: |
+        Container security:
+        - Multi-stage builds; no build tools in final image
+        - COPY specific files, not entire context
+        - No secrets in ENV, ARG, or COPY
+        - No package manager cache in final layer
+        - Pin base image versions for reproducibility
+        - Config daemon image: needs host tools — ensure only required binaries
+
+    # ── Supply chain & dependencies (from prodsec) ───────────────
+    - path: "**/{go.mod,go.sum}"
+      instructions: |
+        Supply chain security:
+        - New dependencies: justify need, check license compatibility (Apache 2.0 compatible)
+        - Pin exact versions; verify go.sum hashes
+        - Flag known CVEs in dependencies (cross-ref osv.dev)
+        - No pre-release versions in production builds
+        - Prefer well-maintained, upstream Kubernetes ecosystem libraries
+        - vendor/ directory must be consistent with go.mod (run go mod vendor)
+
+    # ── Cryptography (from prodsec) ──────────────────────────────
+    - path: "**/*{crypt,cipher,sign,hash,tls,ssl,cert,key,token}*"
+      instructions: |
+        Cryptographic security:
+        - Banned: MD5, SHA1, DES, RC4, 3DES, Blowfish, ECB mode
+        - Symmetric: AES-256-GCM or ChaCha20-Poly1305
+        - Constant-time comparison for all secret/token data
+        - No custom crypto; use vetted libraries only
+        - TLS: enforce minimum TLS 1.2, prefer 1.3
+
+    # ── Hack scripts ─────────────────────────────────────────────
+    - path: "hack/**/*"
+      instructions: |
+        Build and test helper scripts:
+        - Use 'set -euo pipefail' in bash scripts
+        - Quote all variable expansions to prevent word splitting
+        - Validate required environment variables before use
+        - No hardcoded paths; use relative paths from script location
+        - Ensure scripts are idempotent where possible
+
+  # ── Security scanners ────────────────────────────────────────
+  # Only tools listed in the official CodeRabbit schema are included.
+  # See: https://docs.coderabbit.ai/reference/configuration
+  tools:
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+    checkov:
+      enabled: true
+    hadolint:
+      enabled: true
+    golangci-lint:
+      enabled: true
+    yamllint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    ast-grep:
+      essential_rules: true
+
+# ── Knowledge base ───────────────────────────────────────────
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "**/AGENTS.md"
+      - "**/CONTRIBUTING.md"
+      - "**/README.md"
+  issues:
+    scope: "auto"
+  pull_requests:
+    scope: "auto"
+
+chat:
+  auto_reply: true
+  art: false
